@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 用户个人数据（声音模型、参考音频、书籍、阅读进度）
+data/voice/*
+!data/voice/.gitkeep
+data/books/*
+!data/books/.gitkeep
+data/books.json
+data/progress.json
+data/engine_config.json
+data/background.jpg

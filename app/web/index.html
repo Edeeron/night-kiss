@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <title>Night-Night Kiss · 晚安吻</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌙</text></svg>">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ─── 启动屏 ─── -->
+<div id="splash-screen">
+    <div class="splash-content">
+        <div class="splash-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></div>
+        <h1 class="splash-title">晚安吻</h1>
+        <div class="splash-divider"></div>
+        <p class="splash-subtitle">Night · Night · Kiss</p>
+        <p class="splash-desc">用 AI 的声音，陪你读每一本书</p>
+    </div>
+</div>
+
+<!-- ─── 主容器 ─── -->
+<div id="app">
+    <!-- 顶部标题栏 -->
+    <header id="app-header">
+        <div class="header-left">
+            <span class="header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+            <h1 class="header-title">晚安吻</h1>
+        </div>
+        <div class="header-right" id="engine-status"></div>
+    </header>
+
+    <!-- 内容区 -->
+    <main id="content">
+        <!-- 书架 -->
+        <section id="view-bookshelf" class="view">
+            <div class="view-header">
+                <h2>书架</h2>
+            </div>
+            <div id="books-grid" class="books-grid"></div>
+            <div id="books-empty" class="empty-state" style="display:none">
+                <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+                <p>书架空空</p>
+                <p class="empty-hint">去「配置」页面上传 TXT 书籍吧</p>
+            </div>
+        </section>
+
+        <!-- 历史阅读 -->
+        <section id="view-history" class="view" style="display:none">
+            <div class="view-header">
+                <h2>历史阅读</h2>
+                <button class="btn-text" id="btn-clear-history">清空</button>
+            </div>
+            <div id="history-list" class="history-list"></div>
+            <div id="history-empty" class="empty-state" style="display:none">
+                <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></div>
+                <p>还没有阅读记录</p>
+                <p class="empty-hint">开始听第一本书吧</p>
+            </div>
+        </section>
+
+        <!-- 配置 -->
+        <section id="view-settings" class="view" style="display:none">
+            <div class="view-header"><h2>配置</h2></div>
+            <div class="settings-list">
+                <!-- GPT 权重 -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="10" y="10" width="4" height="4"/><line x1="9" y1="2" x2="9" y2="5"/><line x1="15" y1="2" x2="15" y2="5"/><line x1="9" y1="19" x2="9" y2="22"/><line x1="15" y1="19" x2="15" y2="22"/><line x1="2" y1="9" x2="5" y2="9"/><line x1="2" y1="15" x2="5" y2="15"/><line x1="19" y1="9" x2="22" y2="9"/><line x1="19" y1="15" x2="22" y2="15"/></svg></span>
+                        <div class="setting-info">
+                            <h3>GPT 权重</h3>
+                            <p id="gpt-weights-status" class="setting-desc">未上传</p>
+                        </div>
+                    </div>
+                    <label class="btn-upload">
+                        选择文件
+                        <input type="file" id="input-gpt-weights" accept=".pth,.ckpt,.pt" hidden>
+                    </label>
+                </div>
+                <!-- SoVITS 权重 -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+                        <div class="setting-info">
+                            <h3>SoVITS 权重</h3>
+                            <p id="sovits-weights-status" class="setting-desc">未上传</p>
+                        </div>
+                    </div>
+                    <label class="btn-upload">
+                        选择文件
+                        <input type="file" id="input-sovits-weights" accept=".pth,.ckpt,.pt" hidden>
+                    </label>
+                </div>
+                <!-- 参考音频 -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></span>
+                        <div class="setting-info">
+                            <h3>参考音频</h3>
+                            <p id="ref-audio-status" class="setting-desc">未上传</p>
+                        </div>
+                    </div>
+                    <label class="btn-upload">
+                        选择文件
+                        <input type="file" id="input-ref-audio" accept=".wav,.mp3,.flac" hidden>
+                    </label>
+                </div>
+                <!-- 上传书籍 -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+                        <div class="setting-info">
+                            <h3>上传书籍</h3>
+                            <p class="setting-desc">支持 TXT 格式，自动识别章节</p>
+                        </div>
+                    </div>
+                    <label class="btn-upload">
+                        选择文件
+                        <input type="file" id="input-book" accept=".txt" hidden>
+                    </label>
+                </div>
+                <!-- 背景图片 -->
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+                        <div class="setting-info">
+                            <h3>播客背景图</h3>
+                            <p id="bg-status" class="setting-desc">未设置</p>
+                        </div>
+                    </div>
+                    <label class="btn-upload">
+                        选择图片
+                        <input type="file" id="input-bg" accept="image/*" hidden>
+                    </label>
+                </div>
+                <!-- TTS 引擎 -->
+                <div class="setting-card setting-card-engine">
+                    <div class="setting-header">
+                        <span class="setting-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+                        <div class="setting-info">
+                            <h3>TTS 引擎</h3>
+                            <p id="tts-status" class="setting-desc">检测中...</p>
+                        </div>
+                    </div>
+                    <div class="engine-config">
+                        <div class="engine-field">
+                            <label>API 地址</label>
+                            <input type="text" id="input-engine-url" placeholder="http://127.0.0.1:9880/tts">
+                        </div>
+                        <div class="engine-field">
+                            <label>引擎目录</label>
+                            <input type="text" id="input-engine-dir" placeholder="引擎所在文件夹路径">
+                        </div>
+                        <div class="engine-field">
+                            <label>参考音频文本 <span style="color:var(--text-faint)">(参考音频里说了什么)</span></label>
+                            <input type="text" id="input-prompt-text" placeholder="例如：大家好，我是xxx">
+                        </div>
+                        <div class="engine-actions">
+                            <button class="btn-sm" id="btn-engine-save">保存</button>
+                            <button class="btn-sm" id="btn-engine-test">测试连接</button>
+                            <button class="btn-sm" id="btn-engine-detect">自动检测</button>
+                            <button class="btn-sm" id="btn-engine-start">启动引擎</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 底部导航 -->
+    <nav id="tab-bar">
+        <button class="tab active" data-view="bookshelf">
+            <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+            <span class="tab-label">书架</span>
+        </button>
+        <button class="tab" data-view="history">
+            <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg></span>
+            <span class="tab-label">历史</span>
+        </button>
+        <button class="tab" data-view="settings">
+            <span class="tab-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+            <span class="tab-label">配置</span>
+        </button>
+    </nav>
+</div>
+
+<!-- ─── 书籍详情弹窗 ─── -->
+<div id="modal-book" class="modal" style="display:none">
+    <div class="modal-backdrop"></div>
+    <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-body">
+            <h2 id="modal-book-title"></h2>
+            <p id="modal-book-info" class="modal-info"></p>
+            <div class="mode-buttons">
+                <button class="btn-mode" id="btn-podcast">
+                    <span class="btn-mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></span>
+                    播客模式
+                </button>
+                <button class="btn-mode" id="btn-reader">
+                    <span class="btn-mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></span>
+                    听书模式
+                </button>
+            </div>
+            <h3 class="chapters-heading">章节列表</h3>
+            <div id="modal-chapter-list" class="chapter-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── 播放器 ─── -->
+<div id="player" class="player" style="display:none">
+    <!-- 播客模式 -->
+    <div id="player-podcast" class="player-view" style="display:none">
+        <div class="podcast-wrap">
+            <div class="podcast-bg">
+                <img id="podcast-bg-img" src="" alt="">
+            </div>
+            <div id="podcast-subtitle" class="podcast-subtitle"></div>
+        </div>
+    </div>
+    <!-- 听书模式 -->
+    <div id="player-reader" class="player-view" style="display:none">
+        <div class="reader-wrap">
+            <h2 id="reader-chapter-title" class="reader-title"></h2>
+            <div id="reader-content" class="reader-content"></div>
+        </div>
+    </div>
+    <!-- 播放控制栏 -->
+    <div class="player-bar">
+        <div class="player-chapter-info">
+            <span id="player-chapter">--</span>
+            <select id="player-chapter-select"></select>
+        </div>
+        <div class="player-progress-wrap">
+            <div id="player-progress" class="player-progress"></div>
+        </div>
+        <div class="player-controls">
+            <button id="btn-prev" class="ctrl-btn" title="上一章"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 20 9 12l10-8v16z"/><rect x="4.5" y="4" width="2.2" height="16" rx="1.1"/></svg></button>
+            <button id="btn-play-pause" class="ctrl-btn ctrl-main" title="播放/暂停"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="5.5" y="3.5" width="4.5" height="17" rx="1.5"/><rect x="14" y="3.5" width="4.5" height="17" rx="1.5"/></svg></button>
+            <button id="btn-next" class="ctrl-btn" title="下一章"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m5 4 10 8-10 8V4z"/><rect x="17.3" y="4" width="2.2" height="16" rx="1.1"/></svg></button>
+            <button id="btn-continuous" class="ctrl-btn" title="连续播放"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+            <button id="btn-close-player" class="ctrl-btn" title="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Toast 通知 ─── -->
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

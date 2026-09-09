@@ -1,0 +1,2 @@
+# 此目录用于存放用户声音模型文件
+# 支持格式: .pth, .ckpt, .pt, .onnx, .wav, .mp3, .flac
