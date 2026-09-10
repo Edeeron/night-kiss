@@ -4,7 +4,6 @@ Night-Night Kiss (晚安吻) - 章节切分模块
 """
 
 import re
-from pathlib import Path
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -48,13 +47,6 @@ CHAPTER_PATTERNS = [
         re.MULTILINE | re.IGNORECASE,
     ),
 ]
-
-# 中文数字映射
-CN_NUMS = {
-    "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
-    "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
-    "十": 10, "百": 100, "千": 1000, "万": 10000,
-}
 
 
 def is_chapter_heading(line: str) -> bool:

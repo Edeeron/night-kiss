@@ -11,4 +11,9 @@ data/books/*
 data/books.json
 data/progress.json
 data/engine_config.json
-data/background.jpg
+data/background*
+
+# IDE
+.idea/
+.vscode/
+*.swp

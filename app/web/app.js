@@ -90,6 +90,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindEvents();
     await loadBooks();
     loadSettings();
+
+    // 二维码按钮
+    $("#btn-qrcode")?.addEventListener("click", async () => {
+        const r = await api("local-url");
+        if (!r.url) return toast("无法获取局域网地址");
+        $("#qrcode-url").textContent = r.url;
+        // 显示服务端生成的二维码图片
+        const container = $("#qrcode-container");
+        container.innerHTML = `<img src="/api/qrcode?t=${Date.now()}" alt="二维码" style="width:100%;height:100%;">`;
+        $("#modal-qrcode").style.display = "";
+    });
+    $("#modal-qrcode .modal-backdrop")?.addEventListener("click", () => {
+        $("#modal-qrcode").style.display = "none";
+    });
 });
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -509,13 +523,37 @@ async function loadAudio(bookId, chapterIdx) {
         if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
     };
 
-    startProgressPolling();
-
     try {
-        const res = await fetch(`/api/audio/${bookId}/${chapterIdx}`, {
-            method: "POST",
-            signal: controller.signal,
-        });
+        // 先检查是否已有合成在进行（重入章节时避免重复 POST）
+        const statusRes = await fetch(`/api/audio/${bookId}/${chapterIdx}/status`);
+        const statusData = await statusRes.json();
+
+        let res;
+        if (statusData.synthesizing) {
+            // 已有合成在进行，用等待循环轮询（不再另开 progressPolling 避免重复请求）
+            toast("正在合成音频，请稍候...");
+            for (let i = 0; i < 300; i++) {
+                await new Promise(r => setTimeout(r, 1000));
+                if (myRequestId !== S.audioRequestId) return;
+                const sr = await fetch(`/api/audio/${bookId}/${chapterIdx}/status`);
+                const sd = await sr.json();
+                if (sd.cached) break;
+                if (!sd.synthesizing) break;
+                if (sd.current && sd.total) toast(`正在合成第 ${sd.current}/${sd.total} 段...`);
+            }
+            // 合成完成，取缓存文件
+            res = await fetch(`/api/audio/${bookId}/${chapterIdx}`, {
+                method: "POST",
+                signal: controller.signal,
+            });
+        } else {
+            // 没有进行中的合成，启动进度轮询后正常发起 POST
+            startProgressPolling();
+            res = await fetch(`/api/audio/${bookId}/${chapterIdx}`, {
+                method: "POST",
+                signal: controller.signal,
+            });
+        }
 
         stopProgressPolling();
 
@@ -525,7 +563,8 @@ async function loadAudio(bookId, chapterIdx) {
         const fromCache = res.headers.get("X-From-Cache") === "true";
 
         if (res.status === 503) {
-            const msg = res.headers.get("X-Message") || "TTS 引擎不可用";
+            const raw = res.headers.get("X-Message") || "";
+            const msg = raw ? decodeURIComponent(raw) : "TTS 引擎不可用";
             toast(msg, 3500);
             return;
         }
@@ -787,6 +826,15 @@ async function startEngineFromUI() {
     else toast("✗ " + (r.error || "启动失败"), 3500);
 }
 
+async function stopEngineFromUI() {
+    if (!confirm("确定关闭 TTS 引擎？关闭后需手动重新启动。")) return;
+    toast("正在关闭引擎...");
+    const r = await api("engine/stop", { method: "POST" });
+    if (r.success) toast(r.message, 3500);
+    else toast("✗ " + (r.error || "关闭失败"), 3500);
+    loadSettings();
+}
+
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    进度保存
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
@@ -871,4 +919,5 @@ function bindEvents() {
     $("#btn-engine-test")?.addEventListener("click", testEngineConnection);
     $("#btn-engine-detect")?.addEventListener("click", autoDetectEngine);
     $("#btn-engine-start")?.addEventListener("click", startEngineFromUI);
+    $("#btn-engine-stop")?.addEventListener("click", stopEngineFromUI);
 }

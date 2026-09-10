@@ -3,12 +3,12 @@ Night-Night Kiss (晚安吻) - 后端主程序
 本地听书服务，集成 GPT-SoVITS TTS 引擎
 """
 
-import os
 import sys
 import json
 import time
 import wave
 import io
+import socket
 import webbrowser
 import threading
 from pathlib import Path
@@ -42,13 +42,11 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TTS_CONFIG = {
     "api_url": "http://127.0.0.1:9880/tts",
-    "engine_dir": str(BASE_DIR / "engine"),
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 允许的文件类型
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VOICE_EXTS = {".pth", ".ckpt", ".pt", ".onnx", ".wav", ".mp3", ".flac"}
 TXT_EXTS = {".txt"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -59,7 +57,6 @@ def load_engine_config():
     """加载引擎配置"""
     return load_json(ENGINE_CONFIG_FILE, {
         "api_url": "http://127.0.0.1:9880/tts",
-        "engine_dir": str(BASE_DIR / "engine"),
     })
 
 
@@ -539,6 +536,51 @@ def clear_progress():
     return jsonify({"success": True})
 
 
+@app.route("/api/local-url", methods=["GET"])
+def get_local_url():
+    """获取本机局域网地址，用于手机扫码访问"""
+    try:
+        # 获取本机局域网 IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return jsonify({"url": f"http://{local_ip}:5200"})
+    except Exception:
+        return jsonify({"url": None})
+
+
+@app.route("/api/qrcode", methods=["GET"])
+def get_qrcode():
+    """生成局域网访问二维码图片"""
+    try:
+        import qrcode
+        import io
+
+        # 获取局域网地址
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        url = f"http://{local_ip}:5200"
+
+        # 生成二维码
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # 转为字节流
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        return send_file(buf, mimetype="image/png")
+    except Exception as e:
+        print(f"  [错误] 生成二维码失败: {e}")
+        return jsonify({"error": "生成二维码失败"}), 500
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 背景图 API
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -599,6 +641,23 @@ def synthesize_audio(book_id, chapter_idx):
         resp.headers["X-From-Cache"] = "true"
         return resp
 
+    # ── 检查是否已有其他请求在合成同一章节 ──
+    key = f"{book_id}_{chapter_idx}"
+    if key in _syn_progress:
+        print(f"  [等待] 章节 {chapter_idx} 正在合成中，等待完成...")
+        for _ in range(300):  # 最多等 5 分钟
+            time.sleep(1)
+            if key not in _syn_progress:
+                break
+        if cache_path.exists():
+            resp = make_response(send_file(str(cache_path), mimetype="audio/wav"))
+            resp.headers["Content-Length"] = str(cache_path.stat().st_size)
+            resp.headers["X-From-Cache"] = "true"
+            return resp
+        return Response(b"", status=503, mimetype="application/octet-stream",
+            headers={"X-Error": "synth_timeout",
+                     "X-Message": "%E5%90%88%E6%88%90%E8%B6%85%E6%97%B6"})
+
     # ── 获取章节文本 ──
     books = load_json(BOOKS_JSON, [])
     book = None
@@ -627,6 +686,18 @@ def synthesize_audio(book_id, chapter_idx):
     ref_audio = find_voice_model()
     if not ref_audio:
         return jsonify({"error": "未找到参考音频，请上传一段 3~15 秒的 .wav 音频"}), 400
+
+    # ── 先检查引擎是否可达 ──
+    if not get_tts_engine_status():
+        return Response(
+            b"",
+            status=503,
+            mimetype="application/octet-stream",
+            headers={
+                "X-Error": "engine_unavailable",
+                "X-Message": "TTS%20%E5%BC%95%E6%93%8E%E6%9C%AA%E5%90%AF%E5%8A%A8%EF%BC%8C%E8%AF%B7%E5%85%88%E5%90%AF%E5%8A%A8%E5%BC%95%E6%93%8E",
+            }
+        )
 
     if not _weights_loaded:
         load_trained_weights()
@@ -692,23 +763,26 @@ def synthesize_audio(book_id, chapter_idx):
     key = f"{book_id}_{chapter_idx}"
     _syn_progress[key] = {"current": 0, "total": len(segments)}
     wav_chunks = []
+    engine_ok = True
     for i, seg in enumerate(segments):
         _syn_progress[key]["current"] = i + 1
         wav_data = synthesize_segment(seg)
         if wav_data:
             wav_chunks.append(wav_data)
         else:
-            print(f"  [警告] 第 {i+1}/{len(segments)} 段合成失败")
+            print(f"  [警告] 第 {i+1}/{len(segments)} 段合成失败，中止合成")
+            engine_ok = False
+            break
     _syn_progress.pop(key, None)
 
-    if not wav_chunks:
+    if not engine_ok or not wav_chunks:
         return Response(
             b"",
             status=503,
             mimetype="application/octet-stream",
             headers={
-                "X-Error": "TTS引擎不可用",
-                "X-Message": "合成失败，请检查引擎状态",
+                "X-Error": "engine_unavailable",
+                "X-Message": "%E5%90%88%E6%88%90%E5%A4%B1%E8%B4%A5%EF%BC%8C%E8%AF%B7%E6%A3%80%E6%9F%A5%E5%BC%95%E6%93%8E%E7%8A%B6%E6%80%81",
             }
         )
 
@@ -774,7 +848,6 @@ def test_engine():
 def auto_detect_engine():
     """自动检测引擎目录"""
     candidates = [
-        BASE_DIR / "engine",
         BASE_DIR / "GPT-SoVITS",
         Path.home() / "GPT-SoVITS",
     ]
@@ -846,6 +919,45 @@ def start_engine():
         return jsonify({"error": f"启动失败: {e}"})
 
 
+@app.route("/api/engine/stop", methods=["POST"])
+def stop_engine():
+    """关闭 TTS 引擎进程"""
+    cfg = load_engine_config()
+    api_url = cfg.get("api_url", "http://127.0.0.1:9880/tts")
+    # 从 URL 提取端口号
+    try:
+        from urllib.parse import urlparse
+        port = urlparse(api_url).port or 9880
+    except Exception:
+        port = 9880
+
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True
+            )
+            for line in result.stdout.split("\n"):
+                if f":{port}" in line and "LISTENING" in line:
+                    pid = line.strip().split()[-1]
+                    subprocess.run(
+                        ["taskkill", "/F", "/PID", pid],
+                        capture_output=True
+                    )
+                    return jsonify({"success": True, "message": f"引擎已关闭 (PID: {pid})"})
+            return jsonify({"error": "未找到运行中的引擎进程"})
+        else:
+            result = subprocess.run(
+                ["fuser", f"{port}/tcp"], capture_output=True, text=True
+            )
+            pids = result.stdout.strip()
+            if pids:
+                subprocess.run(["kill", "-9"] + pids.split(), capture_output=True)
+                return jsonify({"success": True, "message": f"引擎已关闭 (PID: {pids})"})
+            return jsonify({"error": "未找到运行中的引擎进程"})
+    except Exception as e:
+        return jsonify({"error": f"关闭失败: {e}"})
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 系统 API
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -897,10 +1009,10 @@ if __name__ == "__main__":
     if tts_ok:
         print("  ✓ TTS 引擎已连接")
     else:
-        print("  ✗ TTS 引擎未启动 (可先运行 engine/go-api.bat)")
+        print("  ✗ TTS 引擎未启动，请先启动 GPT-SoVITS API 服务")
     print()
 
     # 自动打开浏览器
     threading.Thread(target=open_browser, daemon=True).start()
 
-    app.run(host="0.0.0.0", port=5200, debug=False)
+    app.run(host="0.0.0.0", port=5200, debug=False, threaded=True)

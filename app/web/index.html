@@ -29,7 +29,12 @@
             <span class="header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
             <h1 class="header-title">晚安吻</h1>
         </div>
-        <div class="header-right" id="engine-status"></div>
+        <div class="header-right">
+            <button id="btn-qrcode" class="header-btn" title="手机扫码访问">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="14" y1="21" x2="17" y2="21"/><line x1="21" y1="17" x2="21" y2="21"/></svg>
+            </button>
+            <span id="engine-status"></span>
+        </div>
     </header>
 
     <!-- 内容区 -->
@@ -162,6 +167,7 @@
                             <button class="btn-sm" id="btn-engine-test">测试连接</button>
                             <button class="btn-sm" id="btn-engine-detect">自动检测</button>
                             <button class="btn-sm" id="btn-engine-start">启动引擎</button>
+                            <button class="btn-sm" id="btn-engine-stop">关闭引擎</button>
                         </div>
                     </div>
                 </div>
@@ -206,6 +212,20 @@
             </div>
             <h3 class="chapters-heading">章节列表</h3>
             <div id="modal-chapter-list" class="chapter-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── 二维码弹窗 ─── -->
+<div id="modal-qrcode" class="modal" style="display:none">
+    <div class="modal-backdrop"></div>
+    <div class="modal-sheet modal-qrcode-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-body qrcode-body">
+            <h2 class="qrcode-title">手机扫码访问</h2>
+            <p class="qrcode-desc">使用手机扫描二维码，即可在手机上使用晚安吻</p>
+            <div id="qrcode-container" class="qrcode-container"></div>
+            <p id="qrcode-url" class="qrcode-url"></p>
         </div>
     </div>
 </div>
