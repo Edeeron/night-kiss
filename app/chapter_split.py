@@ -169,6 +169,44 @@ def split_chapters(filepath: str, min_chars: int = 100) -> list[dict]:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 合成分段（将长文本按句子边界拆为 ≤ max_chars 的段）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def split_into_segments(text: str, max_chars: int = 300) -> list[str]:
+    """
+    将一段文本按句子边界拆分为多个片段，每个片段不超过 max_chars 个字符。
+    用于合成时控制单次请求的文本长度。
+    """
+    if not text or not text.strip():
+        return []
+    if len(text) <= max_chars:
+        return [text.strip()]
+
+    sentences = re.split(r'(?<=[。！？!?\n])', text)
+    sentences = [s for s in sentences if s.strip()]
+
+    segments = []
+    current = ""
+    for sent in sentences:
+        if len(current) + len(sent) <= max_chars:
+            current += sent
+        else:
+            if current.strip():
+                segments.append(current.strip())
+            if len(sent) > max_chars:
+                for i in range(0, len(sent), max_chars):
+                    chunk = sent[i:i + max_chars].strip()
+                    if chunk:
+                        segments.append(chunk)
+                current = ""
+            else:
+                current = sent
+    if current.strip():
+        segments.append(current.strip())
+    return segments
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 测试入口
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

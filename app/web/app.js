@@ -287,7 +287,10 @@ function bindUploads() {
         fd.append("model_type", "gpt");
         const r = await api("upload/weights", { method: "POST", body: fd });
         if (r.error) toast("错误: " + r.error);
-        else toast("GPT 权重已保存 ✓");
+        else {
+            toast("GPT 权重已保存 ✓");
+            if (r.cache_cleared) toast("已清除旧音频缓存", 1500);
+        }
         e.target.value = "";
         loadSettings();
     });
@@ -302,7 +305,10 @@ function bindUploads() {
         fd.append("model_type", "sovits");
         const r = await api("upload/weights", { method: "POST", body: fd });
         if (r.error) toast("错误: " + r.error);
-        else toast("SoVITS 权重已保存 ✓");
+        else {
+            toast("SoVITS 权重已保存 ✓");
+            if (r.cache_cleared) toast("已清除旧音频缓存", 1500);
+        }
         e.target.value = "";
         loadSettings();
     });
@@ -314,7 +320,10 @@ function bindUploads() {
         toast("正在上传参考音频...");
         const r = await apiUpload("upload/voice", f);
         if (r.error) toast("错误: " + r.error);
-        else toast("参考音频已保存 ✓");
+        else {
+            toast("参考音频已保存 ✓");
+            if (r.cache_cleared) toast("已清除旧音频缓存", 1500);
+        }
         e.target.value = "";
         loadSettings();
     });
@@ -483,14 +492,37 @@ async function loadAudio(bookId, chapterIdx) {
 
     toast("正在合成音频，请稍候...");
 
+    // 启动合成进度轮询
+    let progressTimer = null;
+    const startProgressPolling = () => {
+        progressTimer = setInterval(async () => {
+            try {
+                const r = await fetch(`/api/audio/${bookId}/${chapterIdx}/status`);
+                const d = await r.json();
+                if (d.synthesizing && myRequestId === S.audioRequestId) {
+                    toast(`正在合成第 ${d.current}/${d.total} 段...`);
+                }
+            } catch (_) {}
+        }, 2000);
+    };
+    const stopProgressPolling = () => {
+        if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    };
+
+    startProgressPolling();
+
     try {
         const res = await fetch(`/api/audio/${bookId}/${chapterIdx}`, {
             method: "POST",
             signal: controller.signal,
         });
 
+        stopProgressPolling();
+
         // 检查是否已被新请求取代
         if (myRequestId !== S.audioRequestId) return;
+
+        const fromCache = res.headers.get("X-From-Cache") === "true";
 
         if (res.status === 503) {
             const msg = res.headers.get("X-Message") || "TTS 引擎不可用";
@@ -511,9 +543,10 @@ async function loadAudio(bookId, chapterIdx) {
         S.audioDuration = S.audioBuffer.duration;
         S.audioPauseOffset = 0;
 
-        toast("开始播放");
+        toast(fromCache ? "缓存命中，开始播放" : "开始播放");
         playAudio();
     } catch (err) {
+        stopProgressPolling();
         if (err.name === "AbortError") return; // 被取消，忽略
         console.error("Audio error:", err);
         toast("音频加载失败", 3000);
@@ -796,6 +829,33 @@ function bindEvents() {
     $("#player-chapter-select").addEventListener("change", (e) => {
         S.currentChapter = parseInt(e.target.value);
         if (S.currentBook) loadChapterContent(S.currentBook.id, S.currentChapter);
+    });
+
+    // 进度条点击跳转
+    $("#player-progress-bar").addEventListener("click", (e) => {
+        if (!S.audioBuffer || !S.audioDuration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pct = (e.clientX - rect.left) / rect.width;
+        const seekTo = pct * S.audioDuration;
+
+        if (S.isPlaying) {
+            // 重新定位播放
+            if (S.audioSource) {
+                try { S.audioSource.onended = null; S.audioSource.stop(); } catch (_) {}
+                S.audioSource = null;
+            }
+            S.audioSource = S.audioCtx.createBufferSource();
+            S.audioSource.buffer = S.audioBuffer;
+            S.audioSource.connect(S.audioCtx.destination);
+            S.audioSource.onended = onTrackEnd;
+            S.audioSource.start(0, seekTo);
+            S.audioStartTime = S.audioCtx.currentTime - seekTo;
+        } else {
+            S.audioPauseOffset = seekTo;
+        }
+        // 更新进度条
+        const progressPct = Math.min((seekTo / S.audioDuration) * 100, 100);
+        $("#player-progress").style.width = progressPct + "%";
     });
 
     // 清空历史

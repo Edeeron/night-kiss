@@ -629,8 +629,13 @@ svg { display: block; }
 #player-chapter-select option { background: #111; color: var(--text); }
 
 .player-progress-wrap {
-    height: 2px; background: rgba(255,255,255,.1);
-    border-radius: 2px; margin-bottom: 14px; overflow: hidden;
+    height: 6px; background: rgba(255,255,255,.1);
+    border-radius: 3px; margin-bottom: 14px; overflow: hidden;
+    cursor: pointer; position: relative;
+}
+.player-progress-wrap::after {
+    content: ''; position: absolute; top: -8px; bottom: -8px;
+    left: 0; right: 0; /* 扩大点击区域 */
 }
 .player-progress {
     height: 100%; width: 0;

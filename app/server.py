@@ -7,6 +7,8 @@ import os
 import sys
 import json
 import time
+import wave
+import io
 import webbrowser
 import threading
 from pathlib import Path
@@ -15,7 +17,7 @@ import subprocess
 import requests
 from flask import (
     Flask, request, jsonify, send_file,
-    send_from_directory, Response
+    send_from_directory, Response, make_response
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -113,6 +115,21 @@ def load_trained_weights():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 工具函数
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def clear_all_audio_caches():
+    """清除所有书籍的音频缓存"""
+    if not BOOKS_DIR.exists():
+        return 0
+    cleared = 0
+    for book_dir in BOOKS_DIR.iterdir():
+        if book_dir.is_dir():
+            audio_dir = book_dir / "audio"
+            if audio_dir.exists():
+                import shutil
+                shutil.rmtree(str(audio_dir))
+                cleared += 1
+    return cleared
+
 
 def ensure_dirs():
     """确保所有数据目录存在"""
@@ -242,10 +259,51 @@ def upload_weights():
     global _weights_loaded
     _weights_loaded = False
 
+    # 清除所有音频缓存（声音变了，需要重新合成）
+    cleared = clear_all_audio_caches()
+    if cleared:
+        print(f"  [缓存清理] 已清除 {cleared} 本书的音频缓存")
+
     return jsonify({
         "success": True,
         "model_type": model_type,
         "filename": file.filename,
+        "cache_cleared": cleared,
+    })
+
+
+@app.route("/api/upload/voice", methods=["POST"])
+def upload_voice():
+    """上传参考音频文件"""
+    if "file" not in request.files:
+        return jsonify({"error": "未选择文件"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "未选择文件"}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".wav", ".mp3", ".flac"}:
+        return jsonify({"error": f"不支持的格式: {ext}，仅支持 .wav / .mp3 / .flac"}), 400
+
+    # 清理旧的参考音频
+    if VOICE_DIR.exists():
+        for f in VOICE_DIR.iterdir():
+            if f.suffix.lower() in {".wav", ".mp3", ".flac"}:
+                f.unlink()
+
+    filepath = VOICE_DIR / file.filename
+    file.save(str(filepath))
+
+    # 清除所有音频缓存（参考音频变了，需要重新合成）
+    cleared = clear_all_audio_caches()
+    if cleared:
+        print(f"  [缓存清理] 已清除 {cleared} 本书的音频缓存")
+
+    return jsonify({
+        "success": True,
+        "filename": file.filename,
+        "cache_cleared": cleared,
     })
 
 
@@ -290,7 +348,6 @@ def upload_book():
         chapters_data.append({
             "index": i,
             "title": ch["title"],
-            "text": ch["text"],
             "char_count": len(ch["text"]),
             "file": str(chapter_path),
         })
@@ -500,13 +557,49 @@ def get_background():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 音频合成 API
+# 音频合成 API（带缓存）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 合成进度追踪 {"book_id_chIdx": {"current": n, "total": m}}
+_syn_progress = {}
+
+
+def _get_audio_cache_path(book_id, chapter_idx):
+    """获取章节音频缓存文件路径"""
+    audio_dir = BOOKS_DIR / book_id / "audio"
+    return audio_dir / f"chapter_{chapter_idx:03d}.wav"
+
+
+@app.route("/api/audio/<book_id>/<int:chapter_idx>/status", methods=["GET"])
+def audio_cache_status(book_id, chapter_idx):
+    """查询章节音频是否已缓存 & 合成进度"""
+    cache_path = _get_audio_cache_path(book_id, chapter_idx)
+    if cache_path.exists():
+        size = cache_path.stat().st_size
+        return jsonify({"cached": True, "size": size})
+    key = f"{book_id}_{chapter_idx}"
+    prog = _syn_progress.get(key)
+    if prog:
+        return jsonify({"cached": False, "synthesizing": True,
+                        "current": prog["current"], "total": prog["total"]})
+    return jsonify({"cached": False})
+
 
 @app.route("/api/audio/<book_id>/<int:chapter_idx>", methods=["POST"])
 def synthesize_audio(book_id, chapter_idx):
-    """调用 TTS 引擎合成章节音频"""
-    # 获取章节文本
+    """合成章节音频（优先读取缓存，否则分段合成后缓存）"""
+    from chapter_split import split_into_segments
+
+    # ── 检查缓存 ──
+    cache_path = _get_audio_cache_path(book_id, chapter_idx)
+    if cache_path.exists():
+        print(f"  [缓存命中] {cache_path.name} ({cache_path.stat().st_size:,} bytes)")
+        resp = make_response(send_file(str(cache_path), mimetype="audio/wav"))
+        resp.headers["Content-Length"] = str(cache_path.stat().st_size)
+        resp.headers["X-From-Cache"] = "true"
+        return resp
+
+    # ── 获取章节文本 ──
     books = load_json(BOOKS_JSON, [])
     book = None
     for b in books:
@@ -530,21 +623,19 @@ def synthesize_audio(book_id, chapter_idx):
     if not text or not text.strip():
         return jsonify({"error": "章节内容为空"}), 400
 
-    # 检查参考音频
+    # ── 检查参考音频 ──
     ref_audio = find_voice_model()
     if not ref_audio:
         return jsonify({"error": "未找到参考音频，请上传一段 3~15 秒的 .wav 音频"}), 400
 
-    # 自动加载训练的权重（首次或引擎重启后）
     if not _weights_loaded:
         load_trained_weights()
 
-    # 调用 GPT-SoVITS api_v2
     cfg = load_engine_config()
     api_url = cfg.get("api_url", TTS_CONFIG["api_url"])
     prompt_text = cfg.get("prompt_text", "")
-    payload = {
-        "text": text,
+
+    base_payload = {
         "text_lang": "zh",
         "ref_audio_path": ref_audio,
         "prompt_lang": "zh",
@@ -560,45 +651,85 @@ def synthesize_audio(book_id, chapter_idx):
         "parallel_infer": True,
     }
 
-    def generate():
+    # ── 分段合成 ──
+    segments = split_into_segments(text, max_chars=300)
+    if not segments:
+        return jsonify({"error": "章节内容为空"}), 400
+
+    print(f"  [合成] {len(segments)} 段...")
+
+    def synthesize_segment(seg_text):
+        payload = dict(base_payload)
+        payload["text"] = seg_text
         try:
-            resp = requests.post(api_url, json=payload, stream=True, timeout=300)
-            if resp.status_code == 200:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-            else:
-                yield b""
+            resp = requests.post(api_url, json=payload, timeout=120)
+            if resp.status_code == 200 and len(resp.content) > 44:
+                return resp.content
         except requests.ConnectionError:
-            yield b""
+            pass
         except Exception:
-            yield b""
+            pass
+        return None
 
-    def stream_audio():
-        audio_data = b""
-        for chunk in generate():
-            audio_data += chunk
+    def concatenate_wav(wav_chunks):
+        if len(wav_chunks) == 1:
+            return wav_chunks[0]
+        output = io.BytesIO()
+        out_wave = None
+        for wav_data in wav_chunks:
+            in_wave = wave.open(io.BytesIO(wav_data), 'rb')
+            params = in_wave.getparams()
+            if out_wave is None:
+                out_wave = wave.open(output, 'wb')
+                out_wave.setparams(params)
+            frames = in_wave.readframes(params.nframes)
+            out_wave.writeframes(frames)
+            in_wave.close()
+        out_wave.close()
+        return output.getvalue()
 
-        if not audio_data:
-            # TTS 引擎不可用，返回静音占位
-            return Response(
-                b"",
-                status=503,
-                mimetype="application/octet-stream",
-                headers={
-                    "X-Error": "TTS引擎不可用",
-                    "X-Message": "请先启动 TTS 引擎，再测试连接",
-                }
-            )
+    # 逐段合成
+    key = f"{book_id}_{chapter_idx}"
+    _syn_progress[key] = {"current": 0, "total": len(segments)}
+    wav_chunks = []
+    for i, seg in enumerate(segments):
+        _syn_progress[key]["current"] = i + 1
+        wav_data = synthesize_segment(seg)
+        if wav_data:
+            wav_chunks.append(wav_data)
+        else:
+            print(f"  [警告] 第 {i+1}/{len(segments)} 段合成失败")
+    _syn_progress.pop(key, None)
 
+    if not wav_chunks:
         return Response(
-            audio_data,
-            status=200,
-            mimetype="audio/wav",
-            headers={"Content-Length": str(len(audio_data))},
+            b"",
+            status=503,
+            mimetype="application/octet-stream",
+            headers={
+                "X-Error": "TTS引擎不可用",
+                "X-Message": "合成失败，请检查引擎状态",
+            }
         )
 
-    return stream_audio()
+    audio_data = concatenate_wav(wav_chunks)
+    print(f"  [合成完成] {len(segments)} 段 → {len(audio_data):,} bytes")
+
+    # ── 保存到缓存 ──
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cache_path, "wb") as f:
+        f.write(audio_data)
+    print(f"  [已缓存] {cache_path}")
+
+    return Response(
+        audio_data,
+        status=200,
+        mimetype="audio/wav",
+        headers={
+            "Content-Length": str(len(audio_data)),
+            "X-From-Cache": "false",
+        },
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
