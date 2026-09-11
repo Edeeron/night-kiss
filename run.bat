@@ -23,7 +23,7 @@ if %errorlevel% neq 0 (
 
 :: ── 安装依赖 ──
 echo  正在检查依赖...
-pip install flask requests -q 2>nul
+pip install -r requirements.txt -q 2>nul
 
 :: ── 创建数据目录 ──
 if not exist "data\voice" mkdir "data\voice"

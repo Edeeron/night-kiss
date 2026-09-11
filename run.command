@@ -19,7 +19,7 @@ fi
 
 # 安装依赖
 echo "  正在检查依赖..."
-pip3 install flask requests -q 2>/dev/null
+pip3 install -r requirements.txt -q 2>/dev/null
 
 # 创建数据目录
 mkdir -p data/voice data/books
