@@ -430,6 +430,11 @@ function showPlayer() {
     const player = $("#player");
     player.style.display = "";
 
+    // 显示书籍名称
+    if (S.currentBook) {
+        $("#player-chapter").textContent = S.currentBook.title;
+    }
+
     // 显示对应模式
     $("#player-podcast").style.display = S.mode === "podcast" ? "" : "none";
     $("#player-reader").style.display = S.mode === "reader" ? "" : "none";
@@ -467,7 +472,7 @@ async function loadChapterContent(bookId, chapterIdx) {
     S.currentChapter = chapterIdx;
 
     // 更新 UI
-    $("#player-chapter").textContent = data.title;
+    $("#player-chapter").textContent = data.book_title || (S.currentBook ? S.currentBook.title : "");
     $("#player-chapter-select").value = chapterIdx;
 
     // 同步章节进度到历史记录
