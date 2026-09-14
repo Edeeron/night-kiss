@@ -21,9 +21,16 @@ from flask import (
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 路径配置
+# 路径配置（兼容 PyInstaller 打包）
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BASE_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包后：exe 所在目录为数据根目录
+    BASE_DIR = Path(sys.executable).parent
+    _BUNDLE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    _BUNDLE_DIR = BASE_DIR
+
 DATA_DIR = BASE_DIR / "data"
 VOICE_DIR = DATA_DIR / "voice"
 BOOKS_DIR = DATA_DIR / "books"
@@ -34,7 +41,8 @@ PROGRESS_JSON = DATA_DIR / "progress.json"
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Flask 初始化
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app = Flask(__name__, static_folder=str(Path(__file__).parent / "web"), static_url_path="")
+_static_dir = str(_BUNDLE_DIR / "app" / "web") if getattr(sys, 'frozen', False) else str(Path(__file__).parent / "web")
+app = Flask(__name__, static_folder=_static_dir, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

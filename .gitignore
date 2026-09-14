@@ -13,6 +13,12 @@ data/progress.json
 data/engine_config.json
 data/background*
 
+# 构建产物
+dist/
+build/
+*.spec
+installer_output/
+
 # IDE
 .idea/
 .vscode/
