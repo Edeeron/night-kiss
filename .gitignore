@@ -19,6 +19,14 @@ build/
 *.spec
 installer_output/
 
+# 打包工具与文档（本地使用，不入库）
+app.ico
+build.bat
+setup.iss
+使用说明.md
+声音模型训练教程.md
+配置指引.md
+
 # IDE
 .idea/
 .vscode/
